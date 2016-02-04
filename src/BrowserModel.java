@@ -4,6 +4,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+
+import resources.BrowserException;
 
 
 /**
@@ -59,7 +62,7 @@ public class BrowserModel {
     /**
      * Changes current page to given URL, removing next history.
      */
-    public URL go (String url) {
+    public URL go (String url) throws BrowserException {
         try {
             URL tmp = completeURL(url);
             // unfortunately, completeURL may not have returned a valid URL, so test it
@@ -74,10 +77,11 @@ public class BrowserModel {
                 myCurrentIndex++;
             }
             return myCurrentURL;
-        }
-        catch (Exception e) {
+        } catch (Exception e) {
             return null;
         }
+        
+        
     }
 
     /**
@@ -119,6 +123,10 @@ public class BrowserModel {
         if (name != null && !name.equals("") && myCurrentURL != null) {
             myFavorites.put(name, myCurrentURL);
         }
+    }
+    
+    public Set<String> getFavoriteKeys(){
+    	return myFavorites.keySet();
     }
 
     /**

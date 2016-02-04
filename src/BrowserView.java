@@ -2,6 +2,15 @@ import java.awt.Dimension;
 import java.net.URL;
 import java.util.Optional;
 import java.util.ResourceBundle;
+
+import javax.imageio.ImageIO;
+
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
+import org.w3c.dom.events.EventListener;
+import org.w3c.dom.events.EventTarget;
+
 import javafx.beans.value.ChangeListener;
 import javafx.beans.value.ObservableValue;
 import javafx.concurrent.Worker;
@@ -23,12 +32,7 @@ import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.scene.web.WebView;
-import javax.imageio.ImageIO;
-import org.w3c.dom.Document;
-import org.w3c.dom.Element;
-import org.w3c.dom.NodeList;
-import org.w3c.dom.events.EventListener;
-import org.w3c.dom.events.EventTarget;
+import resources.BrowserException;
 
 
 /**
@@ -44,11 +48,21 @@ import org.w3c.dom.events.EventTarget;
  * @author Robert C. Duvall
  */
 public class BrowserView {
-    // constants
+    private static final String GO_COMMAND = "GoCommand";
+	public static final String HOME_COMMAND = "HomeCommand";
+	public static final String NEXT_COMMAND = "NextCommand";
+	private static final String BACK_COMMAND = "BackCommand";
+	public static final String ERROR_TITLE = "ErrorTitle";
+	public static final String SET_HOME_COMMAND = "SetHomeCommand";
+	public static final String FAVORITE_PROMPT = "FavoritePrompt";
+	public static final String FAVORITE_PROMPT_TITLE = "FavoritePromptTitle";
+	// constants
     public static final Dimension DEFAULT_SIZE = new Dimension(800, 600);
     public static final String DEFAULT_RESOURCE_PACKAGE = "resources/";
     public static final String STYLESHEET = "default.css";
     public static final String BLANK = " ";
+    
+    public static final String INVALID_URL = "INVALID_URL";
 
     // scene, needed to report back to Application
     private Scene myScene;
@@ -61,6 +75,7 @@ public class BrowserView {
     private Button myBackButton;
     private Button myNextButton;
     private Button myHomeButton;
+    private Button myAddFavoritesButton;
     // favorites
     private ComboBox<String> myFavorites;
     // get strings from resource file
@@ -91,12 +106,12 @@ public class BrowserView {
      * Display given URL.
      */
     public void showPage (String url) {
-        URL valid = myModel.go(url);
-        if (valid != null) {
+    	try {
+            URL valid = myModel.go(url);
             update(valid);
-        }
-        else {
-            showError("Could not load " + url);
+    	}
+        catch (BrowserException e){
+            showError(e.getMessage());
         }
     }
 
@@ -119,7 +134,7 @@ public class BrowserView {
      */
     public void showError (String message) {
         Alert alert = new Alert(AlertType.ERROR);
-        alert.setTitle(myResources.getString("ErrorTitle"));
+        alert.setTitle(myResources.getString(ERROR_TITLE));
         alert.setContentText(message);
         alert.showAndWait();
     }
@@ -143,7 +158,6 @@ public class BrowserView {
     private void showFavorite (String favorite) {
         showPage(myModel.getFavorite(favorite).toString());
         // reset favorites ComboBox so the same choice can be made again
-        myFavorites.setValue(null);
     }
 
     // update just the view to display given URL
@@ -157,8 +171,8 @@ public class BrowserView {
     // prompt user for name of favorite to add to collection
     private void addFavorite () {
         TextInputDialog input = new TextInputDialog("");
-        input.setTitle(myResources.getString("FavoritePromptTitle"));
-        input.setContentText(myResources.getString("FavoritePrompt"));
+        input.setTitle(myResources.getString(FAVORITE_PROMPT_TITLE));
+        input.setContentText(myResources.getString(FAVORITE_PROMPT));
         Optional<String> response = input.showAndWait();
         // did user make a choice?
         if (response.isPresent()) {
@@ -172,6 +186,7 @@ public class BrowserView {
         myBackButton.setDisable(! myModel.hasPrevious());
         myNextButton.setDisable(! myModel.hasNext());
         myHomeButton.setDisable(myModel.getHome() == null);
+        //TODO: disable favorites button if curr page already in fav
     }
 
     // convenience method to create HTML page display
@@ -201,7 +216,7 @@ public class BrowserView {
         HBox result = new HBox();
         // create buttons, with their associated actions
         // old style way to do set up callback (anonymous class)
-        myBackButton = makeButton("BackCommand", new EventHandler<ActionEvent>() {
+        myBackButton = makeButton(BACK_COMMAND, new EventHandler<ActionEvent>() {
             @Override      
             public void handle (ActionEvent event) {       
                 back();        
@@ -209,13 +224,15 @@ public class BrowserView {
         });
         result.getChildren().add(myBackButton);
         // new style way to do set up callback (lambdas)
-        myNextButton = makeButton("NextCommand", event -> next());
+        myNextButton = makeButton(NEXT_COMMAND, event -> next());
         result.getChildren().add(myNextButton);
-        myHomeButton = makeButton("HomeCommand", event -> home());
+        myHomeButton = makeButton(HOME_COMMAND, event -> home());
         result.getChildren().add(myHomeButton);
+        myAddFavoritesButton = makeButton(FAVORITE_PROMPT_TITLE, event -> addFavorite());
+        result.getChildren().add(myAddFavoritesButton);
         // if user presses button or enter in text field, load/show the URL
         EventHandler<ActionEvent> showHandler = new ShowPage();
-        result.getChildren().add(makeButton("GoCommand", showHandler));
+        result.getChildren().add(makeButton(GO_COMMAND, showHandler));
         myURLDisplay = makeInputField(40, showHandler);
         result.getChildren().add(myURLDisplay);
         return result;
@@ -225,11 +242,20 @@ public class BrowserView {
     private Node makePreferencesPanel () {
         HBox result = new HBox();
         myFavorites = new ComboBox<String>();
-        // ADD REST OF CODE HERE
-        result.getChildren().add(makeButton("SetHomeCommand", event -> {
+    	myFavorites.getItems().addAll(myModel.getFavoriteKeys());
+    	myFavorites.valueProperty().addListener(new ChangeListener<String>(){
+
+			@Override
+			public void changed(ObservableValue<? extends String> observable, String oldValue, String newValue) {
+				showFavorite(newValue);
+			}
+    		
+    	});
+    	
+        result.getChildren().addAll(makeButton(SET_HOME_COMMAND, event -> {
             myModel.setHome();
             enableButtons();
-        }));
+        }), myFavorites);
         return result;
     }
 
@@ -303,4 +329,5 @@ public class BrowserView {
             }
         }
     };
+    
 }
